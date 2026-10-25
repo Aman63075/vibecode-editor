@@ -34,7 +34,19 @@ import {
   TemplateFolder,
   TemplateItem,
 } from "@/modules/playground/lib/path-to-json";
-import WebContainerPreview from "@/modules/webcontainers/components/webcontainer-preview";
+import dynamic from "next/dynamic";
+
+const WebContainerPreview = dynamic(
+  () => import("@/modules/webcontainers/components/webcontainer-preview"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-full flex items-center justify-center text-zinc-500 text-sm">
+        Loading preview...
+      </div>
+    ),
+  }
+);
 import { useWebContainer } from "@/modules/webcontainers/hooks/useWebContainer";
 import {
   AlertCircle,
