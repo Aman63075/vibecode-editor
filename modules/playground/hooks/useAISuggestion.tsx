@@ -70,7 +70,7 @@ export const useAISuggestions = (): UseAISuggestionsReturn => {
 
                     const data = await response.json()
 
-                    if (data.suggestion) {
+                    if (data.suggestion && !data.suggestion.includes("AI suggestion unavailable")) {
                         const suggestionText = data.suggestion.trim();
                         setState((prev) => ({
                             ...prev,
@@ -83,8 +83,7 @@ export const useAISuggestions = (): UseAISuggestionsReturn => {
                         }))
                     }
                     else {
-                        console.warn("No suggestion received from API.");
-                        setState((prev) => ({ ...prev, isLoading: false }));
+                        setState((prev) => ({ ...prev, suggestion: null, isLoading: false }));
                     }
                 } catch (error) {
                     console.error("Error fetching code suggestion:", error);

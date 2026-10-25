@@ -140,16 +140,54 @@ Instructions:
 Generate suggestion:`;
 }
 
+async function getActiveModel(ollamaHost: string, preferredModel?: string): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
+    const res = await fetch(`${ollamaHost}/api/tags`, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    const models: string[] = (data.models || []).map(
+      (m: { name?: string; model?: string }) => m.name || m.model || ""
+    );
+
+    if (preferredModel && models.some((m) => m === preferredModel || m.startsWith(preferredModel + ":"))) {
+      return preferredModel;
+    }
+
+    // Check coder models first
+    const coderModel = models.find((m) => m.includes("coder") || m.includes("code"));
+    if (coderModel) return coderModel;
+
+    // First available model
+    if (models.length > 0 && models[0]) return models[0];
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function generateSuggestion(prompt: string): Promise<string> {
   const ollamaHost = process.env.OLLAMA_HOST || "http://localhost:11434";
-  const ollamaModel = process.env.OLLAMA_MODEL || "codellama:latest";
+  const preferredModel = process.env.OLLAMA_MODEL || "codellama:latest";
 
   try {
+    const activeModel = await getActiveModel(ollamaHost, preferredModel);
+    if (!activeModel) {
+      return "// AI suggestion unavailable: no Ollama model ready";
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
     const response = await fetch(`${ollamaHost}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
       body: JSON.stringify({
-        model: ollamaModel,
+        model: activeModel,
         prompt,
         stream: false,
         options: {
@@ -158,14 +196,17 @@ async function generateSuggestion(prompt: string): Promise<string> {
         },
       }),
     });
+    clearTimeout(timeout);
 
     if (!response.ok) {
-      throw new Error(`AI service error: ${response.statusText}`);
+      console.warn(`[Ollama] AI service returned ${response.status}: ${response.statusText}`);
+      return "// AI suggestion unavailable";
     }
 
     const data = await response.json();
     if (data.error) {
-      throw new Error(data.error);
+      console.warn(`[Ollama] ${data.error}`);
+      return "// AI suggestion unavailable";
     }
 
     let suggestion = data.response;
@@ -182,7 +223,11 @@ async function generateSuggestion(prompt: string): Promise<string> {
 
     return suggestion;
   } catch (error) {
-    console.error("AI generation error:", error);
+    if ((error as any)?.name === "AbortError") {
+      console.warn("[Ollama] Suggestion request timed out");
+    } else {
+      console.warn("[Ollama] Suggestion generation:", (error as Error)?.message || error);
+    }
     return "// AI suggestion unavailable";
   }
 }
